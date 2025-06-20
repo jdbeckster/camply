@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/camply_web
+      - REDIS_URL=redis://redis:6379
+      - DEBUG=False
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ../backend:/app
+    restart: unless-stopped
+
+  # Frontend React App
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=camply_web
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  # Redis for caching and task queue
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # Celery worker for background tasks
+  celery:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: celery -A app.celery_app worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/camply_web
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ../backend:/app
+    restart: unless-stopped
+
+  # Celery beat for scheduled tasks
+  celery-beat:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: celery -A app.celery_app beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/camply_web
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ../backend:/app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data: 
